@@ -1,143 +1,206 @@
 import os
 import subprocess
 import webbrowser
-import config
+from pathlib import Path
+import psutil
+import time
+
+# Пути к приложениям и играм
+STEAM_PATH = r"C:\Program Files (x86)\Steam\steamapps\common"
+PROGRAM_FILES = r"C:\Program Files"
+PROGRAM_FILES_X86 = r"C:\Program Files (x86)"
+
+# Словарь для быстрого поиска
+APPS_SHORTCUTS = {
+    # Браузеры
+    "хром": "chrome.exe",
+    "хромиум": "chrome.exe",
+    "гугл": "chrome.exe",
+    "файрфокс": "firefox.exe",
+    "браузер": "chrome.exe",
+    
+    # Мессенджеры
+    "дискорд": "Discord.exe",
+    "телеграм": "Telegram.exe",
+    "вайбер": "Viber.exe",
+    "скайп": "skype.exe",
+    
+    # Приложения
+    "блокнот": "notepad.exe",
+    "калькулятор": "calc.exe",
+    "файлы": "explorer.exe",
+    "стим": "steam.exe",
+    "vs": "devenv.exe",
+    "код": "code.exe",
+    "паинт": "mspaint.exe",
+    "ворд": "winword.exe",
+    "эксель": "excel.exe",
+    "пауэрпоинт": "powerpnt.exe",
+    
+    # Видео и медиа
+    "кино": "vlc.exe",
+    "видео": "vlc.exe",
+    "влс": "vlc.exe",
+    "проигрыватель": "wmplayer.exe",
+    "фотографии": "photoviewer.dll",
+}
+
+def find_exe_in_directory(directory, exe_name):
+    """Найти exe файл в директории"""
+    try:
+        if os.path.exists(directory):
+            for file in os.listdir(directory):
+                if file.lower() == exe_name.lower():
+                    return os.path.join(directory, file)
+    except:
+        pass
+    return None
+
+def find_application(app_name):
+    """Найти приложение на компе"""
+    app_name_lower = app_name.lower().strip()
+    
+    # Проверить в словаре ярлыков
+    if app_name_lower in APPS_SHORTCUTS:
+        exe_name = APPS_SHORTCUTS[app_name_lower]
+    else:
+        exe_name = app_name_lower + ".exe" if not app_name_lower.endswith(".exe") else app_name_lower
+    
+    # Поиск в Program Files
+    for directory in [PROGRAM_FILES, PROGRAM_FILES_X86]:
+        exe_path = find_exe_in_directory(directory, exe_name)
+        if exe_path:
+            return exe_path
+    
+    # Поиск в System32
+    system32_path = find_exe_in_directory(r"C:\Windows\System32", exe_name)
+    if system32_path:
+        return system32_path
+    
+    # Поиск в переменной PATH
+    result = subprocess.run(f"where {exe_name}", shell=True, capture_output=True, text=True)
+    if result.stdout.strip():
+        return result.stdout.strip().split('\n')[0]
+    
+    return None
+
+def find_steam_game(game_name):
+    """Найти игру в Steam"""
+    game_name_lower = game_name.lower().strip()
+    
+    try:
+        if os.path.exists(STEAM_PATH):
+            for folder in os.listdir(STEAM_PATH):
+                if game_name_lower in folder.lower():
+                    game_path = os.path.join(STEAM_PATH, folder)
+                    # Найти exe файл
+                    for file in os.listdir(game_path):
+                        if file.endswith('.exe'):
+                            return os.path.join(game_path, file)
+    except:
+        pass
+    return None
 
 def open_application(app_name):
-    """Открывает приложение по названию"""
+    """Открыть приложение"""
     app_name = app_name.lower().strip()
     
-    if app_name in config.APPLICATIONS:
+    # Попробовать найти Steam игру
+    game_exe = find_steam_game(app_name)
+    if game_exe:
         try:
-            os.startfile(config.APPLICATIONS[app_name])
-            return f"Открываю {app_name}"
-        except Exception as e:
-            return f"Ошибка при открытии {app_name}: {e}"
-    else:
-        return f"Приложение {app_name} не найдено. Доступные: {', '.join(config.APPLICATIONS.keys())}"
-
-
-def open_browser(browser_name="chrome"):
-    """Открывает браузер"""
-    browser_name = browser_name.lower().strip()
+            subprocess.Popen(game_exe)
+            return f"Запускаю {app_name}..."
+        except:
+            return f"Ошибка при запуске {app_name}"
     
-    if browser_name in config.BROWSERS:
+    # Попробовать найти приложение
+    app_exe = find_application(app_name)
+    if app_exe:
         try:
-            os.startfile(config.BROWSERS[browser_name])
-            return f"Открываю {browser_name}"
-        except Exception as e:
-            return f"Браузер {browser_name} не установлен или не найден"
+            subprocess.Popen(app_exe)
+            return f"Открываю {app_name}..."
+        except:
+            return f"Ошибка при открытии {app_name}"
+    
+    # Попробовать открыть как веб-сайт
+    if "." in app_name and " " not in app_name:
+        try:
+            if not app_name.startswith("http"):
+                app_name = "http://" + app_name
+            webbrowser.open(app_name)
+            return f"Открываю {app_name}..."
+        except:
+            pass
+    
+    # Попробовать открыть локальный файл
+    if os.path.exists(app_name):
+        try:
+            os.startfile(app_name)
+            return f"Открываю {app_name}..."
+        except:
+            return f"Не могу открыть {app_name}"
+    
+    return f"Не найден: {app_name}"
+
+def close_application(app_name):
+    """Закрыть приложение"""
+    app_name_lower = app_name.lower().strip()
+    
+    # Получить exe имя
+    if app_name_lower in APPS_SHORTCUTS:
+        exe_name = APPS_SHORTCUTS[app_name_lower]
     else:
-        webbrowser.open("https://www.google.com")
-        return "Открываю браузер по умолчанию"
+        exe_name = app_name_lower + ".exe" if not app_name_lower.endswith(".exe") else app_name_lower
+    
+    exe_name = exe_name.lower()
+    closed = False
+    
+    # Найти процесс и закрыть его
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            if exe_name in proc.info['name'].lower():
+                proc.kill()
+                closed = True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    
+    if closed:
+        return f"Закрыл {app_name}"
+    else:
+        return f"Не найден процесс: {app_name}"
 
-
-def search_google(query):
-    """Поиск в Google"""
-    try:
-        url = f"https://www.google.com/search?q={query}"
-        webbrowser.open(url)
-        return f"Ищу в Google: {query}"
-    except Exception as e:
-        return f"Ошибка при поиске: {e}"
-
-
-def search_youtube(query):
-    """Поиск видео на YouTube"""
-    try:
-        url = f"https://www.youtube.com/results?search_query={query}"
-        webbrowser.open(url)
-        return f"Ищу на YouTube: {query}"
-    except Exception as e:
-        return f"Ошибка при поиске видео: {e}"
-
-
-def shutdown_pc():
-    """Выключение ПК"""
-    try:
-        os.system("shutdown /s /t 30")
-        return "ПК выключится через 30 секунд"
-    except Exception as e:
-        return f"Ошибка при выключении: {e}"
-
-
-def restart_pc():
-    """Перезагрузка ПК"""
-    try:
-        os.system("shutdown /r /t 30")
-        return "ПК перезагрузится через 30 секунд"
-    except Exception as e:
-        return f"Ошибка при перезагрузке: {e}"
-
-
-def cancel_shutdown():
-    """Отмена выключения"""
-    try:
-        os.system("shutdown /a")
-        return "Выключение отменено"
-    except Exception as e:
-        return f"Ошибка при отмене: {e}"
-
-
-def get_help():
-    """Справка по командам"""
-    help_text = """
-    Доступные команды:
-    - "Открой браузер" - открыть браузер
-    - "Открой Chrome" - открыть Chrome
-    - "Открой Firefox" - открыть Firefox
-    - "Открой [название приложения]" - открыть приложение
-    - "Ищи [запрос]" - поиск в Google
-    - "Найди видео [запрос]" - поиск на YouTube
-    - "Выключи компьютер" - выключить ПК через 30 сек
-    - "Перезагрузи компьютер" - перезагрузить ПК через 30 сек
-    - "Отмени выключение" - отменить выключение
-    - "Помощь" - показать эту справку
-    """
-    return help_text
-
-
-def process_command(command):
-    """Обработка команды"""
+def execute_command(command):
+    """Выполнить команду"""
     command = command.lower().strip()
     
-    # Открыть браузер
-    if "открой браузер" in command or "открой хром" in command or "открой chrome" in command:
-        return open_browser("chrome")
-    elif "открой firefox" in command or "открой файрфокс" in command:
-        return open_browser("firefox")
-    elif "открой edge" in command or "открой эдж" in command:
-        return open_browser("edge")
-    
     # Открыть приложение
-    elif "открой" in command:
-        app = command.replace("открой", "").strip()
-        return open_application(app)
+    if "открой" in command or "запусти" in command or "запустить" in command or "старт" in command:
+        app_name = command.replace("открой", "").replace("запусти", "").replace("запустить", "").replace("старт", "").strip()
+        if app_name:
+            return open_application(app_name)
     
-    # Поиск
-    elif "ищи" in command or "найди" in command:
-        query = command.replace("ищи", "").replace("найди", "").strip()
-        return search_google(query)
+    # Закрыть приложение
+    elif "закрой" in command or "выключи" in command or "убей" in command or "закрыть" in command:
+        app_name = command.replace("закрой", "").replace("выключи", "").replace("убей", "").replace("закрыть", "").strip()
+        if app_name:
+            return close_application(app_name)
     
-    elif "видео" in command or "youtube" in command or "ютуб" in command:
-        query = command.replace("видео", "").replace("youtube", "").replace("ютуб", "").strip()
-        return search_youtube(query)
+    # Интернет
+    elif "интернет" in command or "сеть" in command:
+        webbrowser.open("https://www.google.com")
+        return "Открываю интернет..."
     
-    # Управление ПК
-    elif "выключи компьютер" in command or "выключение" in command:
-        return shutdown_pc()
-    elif "перезагрузи" in command or "перезагрузка" in command:
-        return restart_pc()
-    elif "отмени выключение" in command or "отмени" in command:
-        return cancel_shutdown()
-    
-    # Справка
+    # Помощь
     elif "помощь" in command or "что ты можешь" in command:
-        return get_help()
+        return "Я могу открыть и закрыть любое приложение. Скажите 'открой [название]' или 'закрой [название]'"
     
-    # Приветствие
-    elif "привет" in command or "здравствуй" in command or "привет джарвис" in command:
-        return "Здравствуйте! Готов вас слушать."
+    # Привет
+    elif "привет" in command or "здравствуй" in command:
+        return "Здравствуйте! Готов помочь."
     
-    else:
-        return "Команда не распознана. Скажите 'помощь' для справки."
+    return "Команда не распознана"
+
+def process_command(command):
+    """Для совместимости"""
+    return execute_command(command)
